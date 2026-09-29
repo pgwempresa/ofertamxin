@@ -7,18 +7,19 @@
       const id = eventId || ('checkout_' + Date.now());
       if (sent.has(id)) return;
       window.fbq('track', 'InitiateCheckout', {
-        value: Number(total) || 0, currency: 'BRL'
+        value: Number(total) || 0, currency: 'MXN'
       }, {eventID: id});
       sent.add(id);
     } catch (_) { /* Pixel must not interrupt checkout. */ }
   };
   window.trackPurchase = function (data) {
     try {
+      if(data.paymentStatus !== 'approved') return;
       const id = data.eventId;
       if (!id || sent.has(id)) return;
       try { if (sessionStorage.getItem('meta:' + id)) return; } catch (_) {}
       window.fbq('track', 'Purchase', {
-        value: Number(data.total) || 0, currency: 'BRL',
+        value: Number(data.total) || 0, currency: 'MXN',
         payment_method: data.paymentMethod || 'unknown',
         payment_status: data.paymentStatus || 'pending'
       }, {eventID: id});

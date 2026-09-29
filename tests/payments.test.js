@@ -1,260 +1,126 @@
-const {test,afterEach}=require('node:test');
+const {test,beforeEach,afterEach}=require('node:test');
 const assert=require('node:assert/strict');
-const fs=require('node:fs');const vm=require('node:vm');
-const p=require('../lib/payment');
-const pix=require('../api/criar-pix');const card=require('../api/criar-cartao');const status=require('../api/status');const recovery=require('../api/recovery');const processEmailJobs=require('../api/process-email-jobs');const recuperarPix=require('../api/recuperar-pix');
+const {Readable}=require('node:stream');
+const {createHmac}=require('node:crypto');
+const fs=require('node:fs'),vm=require('node:vm');
+const p=require('../lib/mexico');
 const originalFetch=global.fetch;
-test('Pix e cartão aprovados encaminham principal para upsell e upsell para obrigado',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html, /id="sc-aprovado"[\s\S]*?Seu pedido entrou na fila de geração! Você receberá o PDF no e-mail informado em até 1 hora\./);
- assert.match(html, /function handleApprovedPayment\(email\)\{[\s\S]*?if\(checkoutMode === 'upsell'\) goTo\('aprovado'\);[\s\S]*?else goTo\('upsell1'\);/);
- assert.match(html, /if\(data\.status==='approved'\)\{[\s\S]*?handleApprovedPayment\(pendingPayment\.email\)/);
- assert.match(html, /if\(d\.status === 'approved' \|\| d\.transactionStatus === 'COMPLETED'\)\{[\s\S]*?handleApprovedPayment\(email\)/);
-});
-test('promessa de entrega é consistente em até uma hora',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.doesNotMatch(html,/10 horas/);
- assert.match(html,/com entrega por e-mail em até 1 hora\./);
-});
-test('documento do checkout limita a 14 dígitos e formata CPF/CNPJ',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/id="fDocument"[^>]*maxlength="18"/);
- assert.match(html,/replace\(\/\\D\/g,''\)\.slice\(0,14\)/);
-});
-test('player de depoimento usa MediaDelivery sem loop e sem VTurb antigo',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/https:\/\/player\.mediadelivery\.net\/embed\/764426\/cb1d8670-f5bf-461e-83eb-26ad06044819\?[^"]*loop=false/);
- assert.doesNotMatch(html,/vturb-smartplayer/);
- assert.doesNotMatch(html,/scripts\.converteai\.net\/5a997ec4/);
-});
-test('ícones das telas de feedback e popup estão visíveis e usam os arquivos enviados',()=>{
- const html=fs.readFileSync('index.html','utf8');
- for(const icon of ['icone-rosto.webp','icone-aventura.webp','icone-final.webp','icone-presente.webp']){
-   assert.match(html,new RegExp('images/'+icon));
-   assert.doesNotMatch(html,new RegExp('images/'+icon+'[^>]*style="display: none;"'));
- }
-});
-test('checkout mostra o logo do Mercado Pago abaixo da mensagem de segurança',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/class="kw-mp-trust"><img src="images\/mercadopago-nuevo-logo-png_seeklogo-397917%20%281%29\.png"/);
- assert.match(html,/\.kw-mp-trust/);
- assert.doesNotMatch(html,/kw-mp-logo/);
-});
-test('checkout de cartão tem máscara e busca automática de CEP',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/https:\/\/viacep\.com\.br\/ws\//);
- assert.match(html,/id="cepStatus"/);
- assert.match(html,/20\$\{expiryParts\[1\]\}-\$\{expiryParts\[0\]\}/);
- assert.match(html,/id="cardNumber"[^>]*maxlength="23"/);
-});
-test('validade aceita ano com dois ou quatro dígitos e CVV segue 3 ou 4',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/id="cardExpiry"[^>]*maxlength="7" placeholder="MM\/AA"/);
- assert.match(html,/id="cardCvv"[^>]*maxlength="4" placeholder="Ex\.: 123"/);
- assert.match(html,/\^\\d\{2\}\\\/\\d\{4\}\$/);
-});
-test('cartão mantém campos da cobrança e hierarquia visual do checkout',()=>{
- const html=fs.readFileSync('index.html','utf8');
- for(const id of ['cardNumber','cardExpiry','cardCvv','cardOwner','cardZip','cardStreet','cardNumberAddress','cardNeighborhood','cardCity','cardState','cardInstallments']) assert.match(html,new RegExp('id="'+id+'"'));
- assert.match(html,/class="card-panel-title">Cartão de crédito/);
- assert.match(html,/class="card-address-title">Endereço de cobrança/);
- assert.match(html,/class="card-brands"/);
-});
-afterEach(()=>{global.fetch=originalFetch;delete process.env.AMPLO_PUBLIC_KEY;delete process.env.AMPLO_SECRET_KEY;delete process.env.SUPABASE_URL;delete process.env.SUPABASE_SERVICE_ROLE_KEY;delete process.env.BREVO_API_KEY;delete process.env.BREVO_FROM_EMAIL;delete process.env.BREVO_FROM_NAME;delete process.env.EMAIL_JOBS_SECRET;delete process.env.CRON_SECRET;delete process.env.VERCEL;delete process.env.VERCEL_ENV;delete process.env.PUBLIC_SITE_URL});
-function setup(){process.env.AMPLO_PUBLIC_KEY='test-public';process.env.AMPLO_SECRET_KEY='test-secret';}
-function body(){return {identifier:'test-order-123',email:'teste@example.com',telefone:'5511999999999',document:'529.982.247-25',quizData:{mom_name:'Responsável'},total:14.9,hasDiscount:true};}
-async function call(fn,b,method='POST'){
-  let code,data;const headers={};
-  await fn({method,body:b,headers:{host:'loja.example',origin:'https://loja.example'},socket:{remoteAddress:'127.0.0.1'}},{setHeader(k,v){headers[k]=v},status(v){code=v;return this},json(v){data=v}});
-  return {code,data,headers};
-}
-async function callApi(fn,{method='GET',query={},headers={}}={}){
- let code,data;const responseHeaders={};
- await fn({method,query,headers:{host:'loja.example',...headers}},{setHeader(k,v){responseHeaders[k]=v},status(v){code=v;return this},json(v){data=v}});
- return {code,data,headers:responseHeaders};
-}
-test('HTML: scripts válidos e todas as rotas de pagamento apontam para APIs existentes',()=>{
- const html=fs.readFileSync('index.html','utf8');for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);
- for(const endpoint of ['criar-pix','criar-cartao','status','config','recovery']){assert.ok(html.includes('/api/'+endpoint));assert.ok(fs.existsSync('api/'+endpoint+'.js'))}
- assert.ok(fs.existsSync('api/recuperar-pix.js'));assert.ok(fs.existsSync('recuperar-pix.html'));
- assert.ok(!html.includes("await r.json()"));assert.ok(!html.includes('MercadoPago'));assert.ok(!html.includes('posthog'));assert.ok(!html.includes("d.status === 'OK'"));
-});
-test('recuperação de e-mail é fire-and-forget e não bloqueia checkout',async()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/function sendRecoveryEvent\(status, extra\)\{[\s\S]*?fetch\('\/api\/recovery'/);
- assert.match(html,/fetch\('\/api\/recovery'[\s\S]*?\.catch\(\(\)=>\{\}\)/);
- assert.match(html,/sendRecoveryEvent\('checkout_opened'/);
- assert.match(html,/sendRecoveryEvent\('pix_pending'/);
- assert.match(html,/sendRecoveryEvent\('paid'/);
- const r=await call(recovery,{status:'checkout_opened',email:'teste@example.com',quizData:{mom_name:'Maria',child_name:'Miguel'},total:14.9});
- assert.equal(r.code,200);
- assert.equal(r.data.ok,true);
- assert.equal(r.data.skipped,true);
-});
-test('recuperação agenda jobs de carrinho e Pix pendente sem expor service role',async()=>{
- process.env.SUPABASE_URL='https://supabase.test';
- process.env.SUPABASE_SERVICE_ROLE_KEY='service-secret';
- const calls=[];
- global.fetch=async(url,options)=>{
-   calls.push({url,options});
-   assert.equal(options.headers.Authorization,'Bearer service-secret');
-   if(url.includes('/checkout_leads?select='))return new Response('[]');
-   if(url.endsWith('/rest/v1/checkout_leads'))return new Response(JSON.stringify([{id:'lead-1'}]));
-   if(url.includes('/rest/v1/email_jobs?lead_id=eq.lead-1&kind=eq.checkout_reminder&status=eq.scheduled'))return new Response(JSON.stringify([{id:'old-job',status:'cancelled'}]));
-   if(url.includes('/rest/v1/email_jobs?on_conflict='))return new Response(JSON.stringify([{id:'job-1'}]));
-   throw new Error('URL inesperada: '+url);
- };
- const r=await call(recovery,{status:'pix_pending',email:'teste@example.com',quizData:{mom_name:'Maria',child_name:'Miguel'},payment_method:'pix',payment_id:'tx1',status_token:'token',amount:14.9});
- assert.equal(r.code,200);
- assert.equal(r.data.ok,true);
- assert.ok(calls.some(c=>c.url.includes('kind=eq.checkout_reminder')&&c.options.method==='PATCH'));
- assert.equal(calls.filter(c=>c.url.includes('/rest/v1/email_jobs?on_conflict=')).length,2);
- const firstJob=JSON.parse(calls.find(c=>c.url.includes('/rest/v1/email_jobs?on_conflict=')).options.body);
- assert.equal(firstJob.lead_id,'lead-1');
- assert.equal(firstJob.kind,'pix_reminder');
- assert.equal(firstJob.status,'scheduled');
- assert.ok(!JSON.stringify(r.data).includes('service-secret'));
-});
-test('processador de email_jobs envia Brevo e marca job como enviado',async()=>{
- process.env.SUPABASE_URL='https://supabase.test';
- process.env.SUPABASE_SERVICE_ROLE_KEY='service-secret';
- process.env.BREVO_API_KEY='brevo-secret';
- process.env.BREVO_FROM_EMAIL='contato@example.com';
- process.env.BREVO_FROM_NAME='Sua Historinha';
- process.env.EMAIL_JOBS_SECRET='job-secret';
- process.env.PUBLIC_SITE_URL='https://loja.example';
- const calls=[];
- global.fetch=async(url,options)=>{
-   calls.push({url,options});
-   if(url.includes('/email_jobs?select='))return new Response(JSON.stringify([{
-     id:'job-1',kind:'pix_reminder',status:'scheduled',
-     checkout_leads:{child_name:'Miguel',email:'cliente@example.com',amount:14.9,cart_data:{recovery_token:'recover-token'}}
-   }]));
-   if(url.includes('/rest/v1/email_jobs?id=eq.job-1'))return new Response(JSON.stringify([{id:'job-1'}]));
-   if(url==='https://api.brevo.com/v3/smtp/email'){
-     const body=JSON.parse(options.body);
-     assert.equal(options.headers['api-key'],'brevo-secret');
-     assert.equal(body.sender.email,'contato@example.com');
-     assert.equal(body.to[0].email,'cliente@example.com');
-     assert.match(body.subject,/Miguel/);
-     assert.match(body.htmlContent,/Falta só pagar o Pix/);
-     assert.match(body.htmlContent,/recuperar-pix\.html\?token=recover-token/);
-     return new Response(JSON.stringify({messageId:'m1'}));
+let rows,calls,provider;
+beforeEach(()=>{
+ Object.assign(process.env,{PAYMENT_SIGNING_SECRET:'test-only-secret-with-more-than-32-characters',PUBLIC_SITE_URL:'https://store.example',SUPABASE_URL:'https://db.example',SUPABASE_SERVICE_ROLE_KEY:'test-db-secret',XPAG_CLIENT_ID:'test-client',XPAG_CLIENT_SECRET:'test-xpag-secret',STRIPE_SECRET_KEY:'sk_test_fake',STRIPE_WEBHOOK_SECRET:'whsec_test_fake'});
+ rows=new Map();calls=[];provider=async()=>{throw Error('Unexpected provider request')};
+ global.fetch=async(url,options={})=>{
+  calls.push({url,options});
+  if(url.startsWith('https://db.example/rest/v1/payment_orders')){
+   const u=new URL(url),id=u.searchParams.get('id')?.slice(3),providerId=u.searchParams.get('provider_id')?.slice(3);
+   if(options.method==='POST'){
+    const data=JSON.parse(options.body);if(rows.has(data.id))return Response.json([]);
+    rows.set(data.id,{...data,created_at:new Date().toISOString(),payment_data:{}});return Response.json([rows.get(data.id)]);
    }
-   throw new Error('URL inesperada: '+url);
+   if(options.method==='PATCH'){if(!rows.has(id))return Response.json([]);rows.set(id,{...rows.get(id),...JSON.parse(options.body)});return Response.json([rows.get(id)])}
+   return Response.json(id?(rows.has(id)?[rows.get(id)]:[]):[...rows.values()].filter(x=>x.provider_id===providerId));
+  }
+  return provider(url,options);
  };
- const r=await callApi(processEmailJobs,{headers:{authorization:'Bearer job-secret'}});
- assert.equal(r.code,200);
- assert.equal(r.data.processed,1);
- assert.equal(r.data.results[0].status,'sent');
- assert.equal(calls.filter(c=>c.url.includes('/rest/v1/email_jobs?id=eq.job-1')).length,2);
- assert.ok(!JSON.stringify(r.data).includes('brevo-secret'));
- assert.ok(!JSON.stringify(r.data).includes('service-secret'));
 });
-test('processador de email_jobs exige segredo em produção',async()=>{
- process.env.VERCEL_ENV='production';
- const r=await callApi(processEmailJobs);
- assert.equal(r.code,503);
- assert.match(r.data.erro,/EMAIL_JOBS_SECRET/);
-});
-test('Vercel aplica cabeçalhos que protegem checkout e integrações necessárias',()=>{
- const config=JSON.parse(fs.readFileSync('vercel.json','utf8'));
- assert.equal(config.crons,undefined);
- const all=config.headers.flatMap(rule=>rule.headers);
- const header=key=>all.find(item=>item.key===key)?.value||'';
- const csp=header('Content-Security-Policy');
- for(const directive of ["base-uri 'self'","object-src 'none'","frame-ancestors 'self'","form-action 'self'","https://connect.facebook.net","https://www.clarity.ms","https://viacep.com.br","https://cdn.converteai.net","worker-src 'self' blob:"])assert.match(csp,new RegExp(directive.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')));
- assert.match(csp,/https:\/\/cdn\.utmify\.com\.br/);
- assert.equal(header('X-Frame-Options'),'DENY');
- assert.match(header('Strict-Transport-Security'),/max-age=/);
- assert.equal(header('X-Content-Type-Options'),'nosniff');
- assert.equal(header('Referrer-Policy'),'strict-origin-when-cross-origin');
-});
-test('preço calculado pelo servidor e total adulterado rejeitado',()=>{setup();assert.equal(p.total(body()),14.9);assert.equal(p.total({...body(),addon_colorir:true,addon_expressa:true,obExtras:true}),36.6);assert.throws(()=>p.buildOrder({...body(),total:0.01},'pix',{}),/preço/)});
-test('credenciais ausentes resultam em JSON 503, sem chamada ao gateway',async()=>{
- global.fetch=()=>{throw Error('Não deveria chamar')};const r=await call(pix,body());assert.equal(r.code,503);assert.match(r.data.erro,/AMPLO_PUBLIC_KEY/);
-});
-test('Pix: payload correto, resposta normalizada e sem chave secreta',async()=>{
- setup();global.fetch=async(url,options)=>{assert.equal(url,'https://app.amplopay.com/api/v1/gateway/pix/receive');assert.equal(options.headers['x-secret-key'],'test-secret');const o=JSON.parse(options.body);assert.equal(o.amount,14.9);assert.equal(o.client.name,'Responsável');assert.equal(o.products[0].price,o.amount);return new Response(JSON.stringify({transactionId:'tx1',status:'OK',webhookToken:'private',pix:{code:'000201abc',image:'https://example.com/qr.png'}}))};
- const r=await call(pix,body());assert.equal(r.code,200);assert.equal(r.data.status,'pending');assert.equal(r.data.qr_code,'000201abc');assert.equal(p.verify(r.data.statusToken).id,'tx1');assert.ok(!JSON.stringify(r.data).includes('test-secret'));assert.ok(!JSON.stringify(r.data).includes('private'));
- assert.equal(p.verifyRecovery(r.data.recoveryToken).id,'tx1');
-});
-test('recuperação real de Pix carrega código e permite consulta com token seguro',async()=>{
- setup();
- const token=p.recoveryTicket('tx1',14.9);
- global.fetch=async(url,options)=>{
-   assert.match(url,/https:\/\/supabase\.test\/rest\/v1\/checkout_leads/);
-   assert.match(url,/gateway_transaction_id=eq\.tx1/);
-   assert.equal(options.headers.Authorization,'Bearer service-secret');
-   return new Response(JSON.stringify([{email:'cliente@example.com',child_name:'Miguel',amount:14.9,status:'pix_generated',cart_data:{pix_code:'000201abc',pix_image:'https://example.com/qr.png',pix_expires_at:'2030-01-01',status_token:p.ticket('tx1',14.9)}}]));
- };
- process.env.SUPABASE_URL='https://supabase.test';process.env.SUPABASE_SERVICE_ROLE_KEY='service-secret';
- const r=await call(recuperarPix,{token});
- assert.equal(r.code,200);
- assert.equal(r.data.pixCode,'000201abc');
- assert.equal(r.data.childName,'Miguel');
- assert.equal(p.verify(r.data.statusToken).id,'tx1');
- const html=fs.readFileSync('recuperar-pix.html','utf8');
- assert.match(html,/\/api\/recuperar-pix/);
- assert.match(html,/\/api\/status/);
- assert.match(html,/Copiar código Pix/);
-});
-test('Utmify: script de UTMs fica instalado sem postback duplicado no backend',()=>{
- const html=fs.readFileSync('index.html','utf8');
- assert.match(html,/Utmify UTMs script/);
- assert.match(html,/DFASknEsAKoezPt18Csw5wNAIpA8pI8BgCMovV5PZMQwuY8YmTZrvBJDbYR8vtQG/);
- assert.doesNotMatch(fs.readFileSync('api/criar-pix.js','utf8'),/api\.utmify|utmify/);
- assert.doesNotMatch(fs.readFileSync('api/criar-cartao.js','utf8'),/api\.utmify|utmify/);
- assert.doesNotMatch(fs.readFileSync('api/status.js','utf8'),/api\.utmify|utmify/);
-});
-test('retorno não JSON da operadora tem erro controlado e impede repetição automática',async()=>{setup();global.fetch=async()=>new Response('The page could not be found',{status:502});const r=await call(pix,body());assert.equal(r.code,502);assert.equal(r.data.uncertain,true);assert.match(r.data.erro,/resposta inválida/)});
-test('autenticação recusada tem mensagem controlada',async()=>{setup();global.fetch=async()=>new Response('{}',{status:401});const r=await call(pix,body());assert.equal(r.code,502);assert.match(r.data.erro,/autenticação/)});
-test('consulta exige token assinado e confirma apenas valor e moeda correspondentes',async()=>{
- setup();global.fetch=async()=>new Response(JSON.stringify({id:'tx1',amount:14.9,currency:'BRL',status:'COMPLETED'}));const r=await call(status,{statusToken:p.ticket('tx1',14.9)});assert.equal(r.data.status,'approved');assert.equal((await call(status,{statusToken:'inventado'})).code,403);
- global.fetch=async()=>new Response(JSON.stringify({id:'tx1',amount:0.01,currency:'BRL',status:'COMPLETED'}));assert.equal((await call(status,{statusToken:p.ticket('tx1',14.9)})).code,409);
-});
-test('OK na consulta não significa pagamento aprovado',async()=>{setup();global.fetch=async()=>new Response(JSON.stringify({id:'tx1',amount:14.9,currency:'BRL',status:'OK'}));assert.notEqual((await call(status,{statusToken:p.ticket('tx1',14.9)})).data.status,'approved')});
-test('cartão usa IP do servidor e OK sem COMPLETED permanece pendente',async()=>{
- setup();const b={...body(),client:{address:{country:'BR',zipCode:'01001000',state:'SP',city:'São Paulo',street:'Rua',number:'1',neighborhood:'Centro'}},card:{number:'4111111111111111',owner:'Teste',expiresAt:'2030-12',cvv:'123'},installments:1,clientIp:'9.9.9.9'};
- global.fetch=async(url,opts)=>{assert.equal(JSON.parse(opts.body).clientIp,'127.0.0.1');return new Response(JSON.stringify({transactionId:'tx-card',status:'OK'}))};const r=await call(card,b);assert.equal(r.code,200);assert.equal(r.data.status,'pending');assert.ok(!JSON.stringify(r.data).includes('4111111111111111'));
-});
-test('método incorreto rejeitado como JSON',async()=>{assert.equal((await call(pix,{},'GET')).code,405)});
-test('cobranças não são bloqueadas por limite local de tentativas',async()=>{
- setup();let gatewayCalls=0;
- global.fetch=async()=>{gatewayCalls++;return new Response(JSON.stringify({transactionId:'rate-'+gatewayCalls,status:'OK',pix:{code:'000201'}}))};
- for(let attempt=0;attempt<12;attempt++)assert.equal((await call(pix,body())).code,200);
- assert.equal(gatewayCalls,12);
-});
-test('ícone Pix referenciado usa extensão correspondente ao PNG',()=>{
- const html=fs.readFileSync('index.html','utf8');assert.ok(!html.includes('images/pix.svg'));assert.ok((html.match(/images\/pix.png/g)||[]).length>=3);assert.equal(fs.readFileSync('images/pix.png').subarray(0,8).toString('hex'),'89504e470d0a1a0a');
-});
-test('16 combinações de desconto e adicionais: UI, total e itens da operadora coincidem',()=>{
- setup();const html=fs.readFileSync('index.html','utf8');
- const source=html.match(/const PRICES = .*?;/)[0]+'\n'+html.match(/function calcTotal\(\)\{[\s\S]*?\n\}/)[0]+'\n'+html.match(/function calcTotalCheckout\(\)\{[\s\S]*?\n\}/)[0];
- for(let mask=0;mask<16;mask++){
-   const b={...body(),hasDiscount:!!(mask&1),addon_colorir:!!(mask&2),addon_expressa:!!(mask&4),obExtras:!!(mask&8)};
-   const ctx={hasDiscount:b.hasDiscount,checkoutRecoveryOffer:false,checkoutMode:'main',upsellDownsellActive:false,addons:{colorir:b.addon_colorir,expressa:b.addon_expressa},obExtras:b.obExtras,OB_PRECO:9.9};vm.createContext(ctx);vm.runInContext(source,ctx);
-   b.total=vm.runInContext('calcTotalCheckout()',ctx);const order=p.buildOrder(b,'pix',{});
-   assert.equal(order.amount,b.total);assert.equal(order.products.reduce((sum,item)=>sum+Math.round(item.price*100)*item.quantity,0),Math.round(b.total*100));
-   assert.equal(order.products.length,1+Number(b.addon_colorir)+Number(b.addon_expressa)+Number(b.obExtras));assert.equal(order.metadata.obExtras,b.obExtras);
+afterEach(()=>{global.fetch=originalFetch;for(const k of ['PAYMENT_SIGNING_SECRET','PUBLIC_SITE_URL','SUPABASE_URL','SUPABASE_SERVICE_ROLE_KEY','XPAG_CLIENT_ID','XPAG_CLIENT_SECRET','STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET'])delete process.env[k]});
+const body=(extra={})=>({identifier:'test-order-123',name:'Ana Pérez',email:'ana@example.com',telefone:'5512345678',document:'PEPJ800101HDFRRL09',total:100,quizData:{mom_name:'Ana Pérez',child_name:'Miguel'},...extra});
+const spei=()=>({ok:true,transaction_id:'pr_spei',currency:'MXN',amount:100,clabe:'012345678901234567',reference:'REF123',bank_name:'STP',beneficiary:'Proveedor'});
+async function call(fn,body,extra={}){let code,data;const req={method:'POST',headers:{host:'store.example',origin:'https://store.example'},body,...extra};await fn(req,{setHeader(){},status(n){code=n;return this},json(d){data=d}});return {code,data}}
+test('preços finais e comparação 50% maior; todas as combinações calculadas no servidor',()=>{
+ assert.equal(p.PRICES.base,150);assert.equal(p.total(body()),100);
+ for(let bits=0;bits<8;bits++){
+  const b=body({addon_colorir:!!(bits&1),addon_expressa:!!(bits&2),obExtras:!!(bits&4),hasDiscount:false,checkoutRecoveryOffer:true});
+  assert.equal(p.total(b),100+(bits&1?50:0)+(bits&2?30:0)+(bits&4?70:0));
  }
+ assert.equal(p.total(body({upsellFamiliar:true,upsellDownsell:true})),200);
+ assert.equal(p.total(body({upsellFamiliar:true,obExtras:true})),270);
 });
-test('CPF/CNPJ validado, formatado e enviado para ambos os métodos',()=>{
- setup();const v=require('../js/document');assert.ok(v.valid('529.982.247-25'));assert.ok(v.valid('11.222.333/0001-81'));
- for(const d of ['', '11111111111','52998224724','11222333000180','52998224725abc'])assert.equal(v.valid(d),false);
- assert.equal(p.buildOrder(body(),'pix',{}).client.document,'52998224725');
- assert.equal(p.buildOrder({...body(),document:undefined,client:{document:'11.222.333/0001-81'}},'pix',{}).client.document,'11222333000181');
+test('total adulterado, documento inválido e telefone inválido rejeitados antes de cobrar',async()=>{
+ for(const extra of [{total:1},{document:'52998224725'},{telefone:'1'}])await assert.rejects(p.create(body(extra),'xpag'));
+ assert.equal(calls.length,0);
 });
-test('documento ausente bloqueia cobrança antes de chamar a operadora',async()=>{
- setup();let called=false;global.fetch=async()=>{called=true;throw Error('Não deveria chamar')};
- const r=await call(pix,{...body(),document:''});assert.equal(r.code,400);assert.match(r.data.erro,/CPF ou CNPJ/);assert.equal(called,false);
+test('SPEI usa credenciais privadas, valor em MXN e instruções completas; CURP não é persistida',async()=>{
+ provider=async(url,o)=>{assert.equal(url,'https://api.xpag.global/cashin');assert.equal(o.headers['X-Client-Id'],'test-client');assert.equal(o.headers['X-Client-Secret'],'test-xpag-secret');const b=JSON.parse(o.body);assert.equal(b.amount,100);assert.equal(b.currency,'MXN');assert.equal(b.document,body().document);assert.equal(b.webhook_url,'https://store.example/api/webhook-xpag');return Response.json(spei())};
+ const result=await p.create(body(),'xpag');assert.equal(result.spei.bank,'STP');assert.equal(result.spei.clabe,'012345678901234567');assert.equal(result.status,'pending');assert.equal(result.total,100);
+ assert.ok(!JSON.stringify([...rows.values()]).includes(body().document));assert.ok(!JSON.stringify(result).includes('test-xpag-secret'));
 });
-test('telefone nacional é enviado com DDD sem prefixo 55 duplicado',()=>{setup();assert.equal(p.buildOrder(body(),'pix',{}).client.phone,'11999999999')});
-test('mostra código e campo recusado sem expor dados do comprador ou credenciais',async()=>{
- setup();global.fetch=async()=>new Response(JSON.stringify({errorCode:'GATEWAY_INVALID_DATA',message:'Dados inválidos',details:[{path:'client.phone',error:{message:'Invalid phone 5511999999999 for teste@example.com test-secret test-public'}}]}),{status:400});
- const r=await call(pix,body());assert.equal(r.code,422);assert.match(r.data.erro,/GATEWAY_INVALID_DATA/);assert.match(r.data.erro,/client.phone/);for(const value of ['5511999999999','teste@example.com','test-secret','test-public'])assert.ok(!r.data.erro.includes(value));
+test('reserva persistente impede duas cobranças para a mesma tentativa',async()=>{
+ let charges=0;provider=async()=>{charges++;return Response.json(spei())};
+ const first=await p.create(body(),'xpag'),second=await p.create(body(),'xpag');assert.equal(first.id,second.id);assert.equal(charges,1);
 });
-test('recusa HTTP 200 preserva motivo e falha 500 bloqueia repetição ambígua',async()=>{
- setup();global.fetch=async()=>new Response(JSON.stringify({status:'REJECTED',errorDescription:'ACQUIRER_REJECTED'}));assert.match((await call(pix,body())).data.erro,/ACQUIRER_REJECTED/);
- global.fetch=async()=>new Response(JSON.stringify({message:'Unavailable'}),{status:500});assert.equal((await call(pix,body())).data.uncertain,true);
+test('reserva bloqueia concorrência enquanto a operadora está processando',async()=>{
+ let release;provider=async()=>{await new Promise(r=>{release=r});return Response.json(spei())};
+ const first=p.create(body(),'xpag');await new Promise(r=>setImmediate(r));
+ await assert.rejects(p.create(body(),'xpag'),e=>e.status===409&&e.uncertain);release();await first;
+});
+test('resposta ambígua preserva pedido e bloqueia repetição automática',async()=>{
+ provider=async()=>{throw Error('network')};await assert.rejects(p.create(body(),'xpag'),e=>e.uncertain);assert.equal([...rows.values()][0].status,'uncertain');
+ await assert.rejects(p.create(body(),'xpag'),e=>e.status===409);assert.equal(calls.filter(c=>c.url.includes('/cashin')).length,1);
+});
+test('sem banco de dados configurado, nenhuma cobrança é criada',async()=>{
+ delete process.env.SUPABASE_SERVICE_ROLE_KEY;await assert.rejects(p.create(body(),'xpag'),e=>e.status===503);assert.equal(calls.length,0);
+});
+test('OXXO usa voucher bruto sem CURP, referência, código de barras e validade de 12 dias',async()=>{
+ provider=async(url,o)=>{const b=JSON.parse(o.body);assert.equal(b.method,'OXXO');assert.equal(b.generateCheckout,false);assert.equal(b.payerData.email,'ana@example.com');assert.equal(b.document,undefined);return Response.json({ok:true,currency:'MXN',amount:100,transaction_id:'oxxo_1',payee_data:{reference:'123456789',barcode:'https://static.muwe.mx/barcode.png'}})};
+ const result=await p.create(body({document:''}),'xpag','oxxo');assert.equal(result.paymentMethod,'oxxo');assert.equal(result.oxxo.reference,'123456789');assert.ok(Date.parse(result.oxxo.expiresAt)>Date.now()+11*86400000);
+});
+test('SPEI incompleto e voucher OXXO sem HTTPS falham sem repetição de cobrança',async()=>{
+ provider=async()=>Response.json({...spei(),bank_name:''});await assert.rejects(p.create(body(),'xpag'),e=>e.uncertain);
+ provider=async()=>Response.json({ok:true,transaction_id:'oxxo_1',currency:'MXN',amount:100,payee_data:{reference:'123',barcode:'javascript:alert(1)'}});
+ await assert.rejects(p.create(body(),'xpag','oxxo'),e=>e.uncertain);
+});
+test('Stripe cria Checkout hospedado em MXN/es-419 com idempotência e sem cartão no servidor',async()=>{
+ provider=async(url,o)=>{assert.equal(url,'https://api.stripe.com/v1/checkout/sessions');assert.equal(o.headers.Authorization,'Bearer sk_test_fake');const b=new URLSearchParams(o.body);assert.equal(b.get('locale'),'es-419');assert.equal(b.get('line_items[0][price_data][unit_amount]'),'10000');assert.equal(b.get('line_items[0][price_data][currency]'),'mxn');assert.equal(b.get('payment_method_types[0]'),'card');assert.equal(b.get('client_reference_id'),o.headers['Idempotency-Key']);assert.ok(!o.body.includes(body().document));return Response.json({id:'cs_test_1',url:'https://checkout.stripe.com/c/pay/test'})};
+ const d=await p.create(body({document:''}),'stripe');assert.equal(d.status,'pending');assert.equal(d.paymentMethod,'card');
+});
+test('Stripe recusa redirecionamento para host inesperado',async()=>{
+ provider=async()=>Response.json({id:'cs_test_1',url:'https://evil.example'});await assert.rejects(p.create(body(),'stripe'),e=>e.uncertain);
+});
+test('token adulterado e expirado não permite consultar pedido',()=>{
+ const t=p.sign({scope:'payment_status',id:'test',exp:Date.now()+10000});assert.equal(p.verify(t).id,'test');assert.throws(()=>p.verify(t+'X'));assert.throws(()=>p.verify(p.sign({scope:'payment_status',id:'test',exp:1})));
+});
+test('SPEI confirma somente cashin confirmado com ID, moeda e valor corretos',async()=>{
+ const order={id:'mx_1',provider:'xpag',provider_id:'pr_spei',amount_cents:10000,status:'pending'};rows.set(order.id,order);
+ for(const override of [{currency:'BRL'},{amount:1},{transaction_id:'other'},{type:'cashout'}]){provider=async()=>Response.json({type:'cashin',transaction_id:'pr_spei',currency:'MXN',amount:100,status:'confirmed',...override});await assert.rejects(p.reconcile(order))}
+ provider=async()=>Response.json({type:'cashin',transaction_id:'pr_spei',currency:'MXN',amount:100,status:'pending'});assert.equal((await p.reconcile(order)).status,'pending');
+ provider=async()=>Response.json({type:'cashin',transaction_id:'pr_spei',currency:'MXN',amount:100,status:'confirmed'});assert.equal((await p.reconcile(order)).status,'approved');assert.ok(rows.get(order.id).paid_at);
+});
+test('Stripe exige sessão completa e paga e confere pedido/valor/moeda',async()=>{
+ const order={id:'mx_card',provider:'stripe',provider_id:'cs_1',amount_cents:20000,status:'pending'};rows.set(order.id,order);
+ const good={id:'cs_1',client_reference_id:'mx_card',currency:'mxn',amount_total:20000,status:'complete',payment_status:'paid'};
+ for(const patch of [{currency:'brl'},{amount_total:100},{client_reference_id:'other'}]){provider=async()=>Response.json({...good,...patch});await assert.rejects(p.reconcile(order))}
+ provider=async()=>Response.json({...good,payment_status:'unpaid'});assert.equal((await p.reconcile(order)).status,'pending');
+ provider=async()=>Response.json(good);assert.equal((await p.reconcile(order)).status,'approved');
+});
+test('webhook XPag falsificado não aprova: consulta autenticada prevalece',async()=>{
+ rows.set('mx_1',{id:'mx_1',provider:'xpag',provider_id:'pr_spei',amount_cents:10000,status:'pending'});
+ provider=async()=>Response.json({type:'cashin',transaction_id:'pr_spei',currency:'MXN',amount:100,status:'pending'});
+ const r=await call(require('../api/webhook-xpag'),{type:'cashin',currency:'MXN',transaction_id:'pr_spei',status:'confirmed'});assert.equal(r.code,200);assert.equal(rows.get('mx_1').status,'pending');
+});
+async function stripeWebhook(signature,raw){let code,data;const req=Readable.from([Buffer.from(raw)]);req.method='POST';req.headers={'stripe-signature':signature};await require('../api/webhook-stripe')(req,{setHeader(){},status(n){code=n;return this},json(d){data=d}});return {code,data}}
+test('webhook Stripe valida assinatura e tolerância de tempo antes de consultar',async()=>{
+ const raw=JSON.stringify({type:'unhandled'}),now=Math.floor(Date.now()/1000),sign=t=>createHmac('sha256','whsec_test_fake').update(t+'.'+raw).digest('hex');
+ assert.equal((await stripeWebhook('t='+now+',v1='+sign(now),raw)).code,200);
+ assert.equal((await stripeWebhook('t='+now+',v1='+sign(now),raw+' ')).code,400);
+ assert.equal((await stripeWebhook('t=1,v1='+sign(1),raw)).code,400);assert.equal(calls.length,0);
+});
+test('webhook Stripe válido confirma via API e aceita repetição sem novo pedido',async()=>{
+ rows.set('mx_card',{id:'mx_card',provider:'stripe',provider_id:'cs_1',amount_cents:10000,status:'pending'});
+ provider=async()=>Response.json({id:'cs_1',client_reference_id:'mx_card',currency:'mxn',amount_total:10000,status:'complete',payment_status:'paid'});
+ const raw=JSON.stringify({type:'checkout.session.completed',data:{object:{id:'cs_1',metadata:{order_id:'mx_card'}}}}),time=Math.floor(Date.now()/1000),sig=createHmac('sha256','whsec_test_fake').update(time+'.'+raw).digest('hex');
+ for(let i=0;i<2;i++)assert.equal((await stripeWebhook('t='+time+',v1='+sig,raw)).code,200);
+ assert.equal(rows.size,1);assert.equal(rows.get('mx_card').status,'approved');
+});
+test('API de status exige token e consulta servidor; rotas antigas não cobram',async()=>{
+ assert.equal((await call(require('../api/status'),{statusToken:'forged'})).code,403);
+ assert.equal((await call(require('../api/criar-pix'),body())).code,410);
+});
+test('HTML tem três métodos, preços em MXN, sem captura de cartão ou CPF e scripts válidos',()=>{
+ const html=fs.readFileSync('index.html','utf8');
+ for(const m of html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g))new vm.Script(m[1]);
+ for(const id of ['methPix','methOxxo','methCard','speiBank','speiBeneficiary','oxxoBarcode'])assert.ok(html.includes('id="'+id+'"'));
+ for(const old of ['id="cardNumber"','id="cardCvv"','BuyerDocument','viacep.com.br','afterPix','BRL 14.90'])assert.ok(!html.includes(old),old);
+ for(const price of ['MXN 150.00','MXN 75.00','MXN 45.00','MXN 105.00','MXN 300.00'])assert.ok(html.includes(price),price);
+ const prices=vm.runInNewContext(html.match(/const PRICES = (\{[^;]+\});/)[1].replace(/^/,'(')+')');assert.equal(prices.base-prices.discount,100);assert.equal(prices.upsellFamiliar,200);
 });
