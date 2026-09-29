@@ -1337,7 +1337,7 @@
                 <input class="kiwi-input-field" id="fDocument" type="text" placeholder=" " maxlength="18" autocomplete="off" required aria-describedby="documentHint">
                 <label class="kiwi-label" for="fDocument">CURP de la persona responsable</label>
               </div>
-              <p id="documentHint" style="font-size:12px;color:var(--ink-soft);margin:4px 0 16px">El pago con tarjeta se procesa de forma segura mediante Stripe.</p>
+              <p id="documentHint" style="font-size:12px;color:var(--ink-soft);margin:4px 0 16px">Para SPEI, ingresa la CURP de la persona adulta que realiza la compra.</p>
 
               <!-- Resumo do pedido -->
               <div id="rec-checkout" style="margin-top:4px"></div>
@@ -1357,8 +1357,8 @@
 
               <!-- Método de pagamento — grid 2 colunas, Pix esquerda pré-selecionado, Cartão direita -->
               <div id="paymentMethodCard">
-              <div class="kw-methods-grid" style="grid-template-columns:repeat(2,1fr)">
-                <div class="kw-method" id="methPix" style="display:none" onclick="selMethod('spei')">
+              <div class="kw-methods-grid" style="grid-template-columns:repeat(3,1fr)">
+                <div class="kw-method active" id="methPix" onclick="selMethod('spei')">
                   <div class="kw-method-badge">
                     <span class="kw-badge-icon"></span>
                   </div>
@@ -2488,7 +2488,7 @@ window.goTo = function(s){
 
     resetCheckoutPaymentState();
     syncCheckoutReceipt();
-    selMethod('card');
+    selMethod('spei');
     if(typeof window.trackInitiateCheckout === 'function') {
       window.trackInitiateCheckout(calcTotalCheckout(), 'checkout_' + SESSION_EID);
     }
