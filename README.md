@@ -22,12 +22,11 @@ Vercel: Node 22, preset Other, sem build command. Configure as variáveis de `.e
 
 - `PUBLIC_SITE_URL`: origem HTTPS do site, sem caminho. Usada nos retornos da Stripe e callback XPag.
 - `PAYMENT_SIGNING_SECRET`: segredo aleatório com pelo menos 32 caracteres para assinar consultas. Gere localmente; não reutilize chaves de gateway.
-- `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`: armazenamento de pedidos, somente no servidor.
 - `XPAG_CLIENT_ID` e `XPAG_CLIENT_SECRET`: credenciais XPag com cash-in MXN/SPEI/OXXO habilitados e permissão `balance` para consulta.
 - `STRIPE_SECRET_KEY`: chave secreta da conta Stripe; comece em ambiente de teste.
 - `STRIPE_WEBHOOK_SECRET`: segredo do endpoint de webhook Stripe, correspondente ao mesmo ambiente.
 
-Execute `supabase/migrations/20260929_payment_orders.sql` no SQL editor do Supabase. A tabela usa RLS e não concede acesso a `anon`/`authenticated`. Sem persistência ou credenciais, o servidor recusa a criação de cobranças.
+O fluxo mexicano não usa Supabase. Os dados de uma tentativa ficam apenas na memória da função durante o processamento; configure um armazenamento persistente antes de operar em produção.
 
 Configure na Stripe o endpoint `https://SEU_DOMINIO/api/webhook-stripe`, com eventos `checkout.session.completed`, `checkout.session.async_payment_succeeded` e `checkout.session.expired`. A XPag recebe `webhook_url` no corpo de cada cobrança; a documentação não pede cadastro separado no painel.
 
