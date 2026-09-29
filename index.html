@@ -1333,11 +1333,8 @@
                 </div>
               </div>
 
-              <div class="kiwi-input" id="documentWrap">
-                <input class="kiwi-input-field" id="fDocument" type="text" placeholder=" " maxlength="18" autocomplete="off" aria-describedby="documentHint">
-                <label class="kiwi-label" for="fDocument">CURP de la persona responsable (solo SPEI)</label>
-              </div>
-              <p id="documentHint" style="font-size:12px;color:var(--ink-soft);margin:4px 0 16px">Para SPEI, ingresa la CURP de la persona adulta que realiza la compra.</p>
+              <div class="kiwi-input" id="documentWrap" style="display:none"></div>
+              <p id="documentHint" style="display:none"> </p>
 
               <!-- Resumo do pedido -->
               <div id="rec-checkout" style="margin-top:4px"></div>
@@ -2391,7 +2388,6 @@ async function pagarTransferencia(){
  hideErroCheckout();const btn=document.getElementById('btnPix');let submitted=false;
  try{
   const body=checkoutPayload();
-  if(metodoPag==='spei'&&!/^[A-Z][AEIOUX][A-Z]{2}\d{6}[HM][A-Z]{5}[A-Z0-9]\d$/.test(body.document))throw new Error('Ingresa una CURP válida de la persona responsable.');
   btn.disabled=true;btn.textContent='Generando datos de pago…';submitted=true;
   const r=await fetch(metodoPag==='oxxo'?'/api/criar-oxxo':'/api/criar-spei',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await paymentResponse(r);keepPayment(data);showTransfer(data);
