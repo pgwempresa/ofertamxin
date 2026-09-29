@@ -21,7 +21,6 @@ Fonte dos preços cobrados: `lib/mexico.js`. Valores exibidos também estão em 
 Vercel: Node 22, preset Other, sem build command. Configure as variáveis de `.env.example` no ambiente desejado, sem incluir segredos no frontend:
 
 - `PUBLIC_SITE_URL`: origem HTTPS do site, sem caminho. Usada nos retornos da Stripe e callback XPag.
-- `PAYMENT_SIGNING_SECRET`: segredo aleatório com pelo menos 32 caracteres para assinar consultas. Gere localmente; não reutilize chaves de gateway.
 - `XPAG_CLIENT_ID` e `XPAG_CLIENT_SECRET`: credenciais XPag com cash-in MXN/SPEI/OXXO habilitados e permissão `balance` para consulta.
 - `STRIPE_SECRET_KEY`: chave secreta da conta Stripe; comece em ambiente de teste.
 - `STRIPE_WEBHOOK_SECRET`: segredo do endpoint de webhook Stripe, correspondente ao mesmo ambiente.
