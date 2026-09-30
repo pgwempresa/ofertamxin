@@ -547,16 +547,21 @@
     #sc-checkout .kw-method.active .kw-method-badge { display: block; }
     #sc-checkout .kw-method.active#methPix { border-color: #48bb78; color: #16a34a; }
 
-    /* Cartão — formulário visual com hierarquia semelhante ao checkout de referência. */
-    #sc-checkout .kw-card-panel { width: 100%; padding: 26px 22px 22px; border-radius: 22px; border: 1px solid #e7e9ee; background: #fff; box-shadow: 0 10px 30px rgba(30,37,61,.06); }
-    #sc-checkout .card-panel-title { margin: 0 0 18px; color: #202124; font-size: 25px; line-height: 1.15; font-weight: 700; letter-spacing: -.3px; }
-    #sc-checkout .card-brands { display: flex; align-items: center; gap: 9px; margin-bottom: 30px; }
-    #sc-checkout .card-brand { width: 54px; height: 34px; border: 1px solid #e1e4eb; border-radius: 7px; background: #fff; display: flex; align-items: center; justify-content: center; font-family: Arial,sans-serif; font-weight: 800; font-size: 11px; color: #162d6b; }
-    #sc-checkout .card-brand.mastercard { gap: 0; }
-    #sc-checkout .card-brand.mastercard i { width: 17px; height: 17px; border-radius: 50%; display: block; background: #eb001b; }
-    #sc-checkout .card-brand.mastercard i+ i { background: #f79e1b; margin-left: -7px; opacity: .96; }
-    #sc-checkout .card-brand.elo { color: #1d5ea8; font-style: italic; }
-    #sc-checkout .card-brand.amex { color: #0879be; font-size: 8px; border-color: #0879be; }
+    /* Cartão — Stripe Embedded Checkout */
+    #sc-checkout .kw-card-panel { width: 100%; padding: 22px 18px 18px; border-radius: 16px; border: 1px solid #dfe6f2; background: linear-gradient(180deg,#fff 0%,#f8fbff 100%); box-shadow: 0 14px 34px rgba(28,30,82,.10); }
+    #sc-checkout .card-panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    #sc-checkout .card-panel-title { margin: 0; color: #111827; font-size: 22px; line-height: 1.15; font-weight: 800; }
+    #sc-checkout .card-panel-sub { margin:7px 0 0; color:#5b6475; font-size:13.5px; line-height:1.45; }
+    #sc-checkout .stripe-pill { flex-shrink:0; display:flex; align-items:center; gap:6px; background:#635bff; color:#fff; border-radius:999px; padding:7px 10px; font-size:12px; font-weight:800; }
+    #sc-checkout .card-brands { display: flex; align-items: center; gap: 7px; margin: 14px 0 16px; flex-wrap:wrap; }
+    #sc-checkout .card-brand { min-width: 49px; height: 31px; border: 1px solid #d8deea; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; font-family: Arial,sans-serif; font-weight: 800; font-size: 10px; color: #162d6b; padding:0 7px; box-shadow:0 4px 10px rgba(17,24,39,.04); }
+    #sc-checkout .card-brand.mastercard { gap: 0; min-width:52px; }
+    #sc-checkout .card-brand.mastercard i { width: 15px; height: 15px; border-radius: 50%; display: block; background: #eb001b; }
+    #sc-checkout .card-brand.mastercard i+ i { background: #f79e1b; margin-left: -6px; opacity: .96; }
+    #sc-checkout .card-brand.amex { color: #0879be; font-size: 8px; border-color: #80c7ea; }
+    #sc-checkout .card-trust-list { display:grid; gap:8px; margin:0 0 16px; padding:0; list-style:none; }
+    #sc-checkout .card-trust-list li { display:flex; align-items:center; gap:8px; color:#374151; font-size:13px; line-height:1.3; }
+    #sc-checkout .card-trust-list li::before { content:'✓'; display:flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:#ecfdf5; color:#059669; font-weight:900; font-size:12px; flex-shrink:0; }
     #sc-checkout .card-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
     #sc-checkout .card-field label { color: #242424; font-size: 15px; font-weight: 600; line-height: 1.2; }
     #sc-checkout .card-field .kiwi-input-field { box-sizing: border-box; width: 100%; min-height: 52px; padding: 13px 14px; border: 1.5px solid #c7cad1; border-radius: 10px; color: #242424; background: #fff; font-size: 18px; }
@@ -566,9 +571,10 @@
     #sc-checkout .card-address-title { margin: 8px 0 15px; padding-top: 18px; border-top: 1px solid #edf0f4; color: #242424; font-size: 17px; font-weight: 700; }
     #sc-checkout .card-address-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
     #sc-checkout .card-address-grid .card-field:first-child, #sc-checkout .card-address-grid .card-field:nth-child(4) { grid-column: 1 / -1; }
-    #sc-checkout .kw-card-panel .kw-pay-btn { margin-top: 6px; border-radius: 10px; min-height: 56px; background: #3483fa !important; box-shadow: 0 5px 12px rgba(52,131,250,.18); font-size: 19px; }
-    #sc-checkout .kw-card-panel .kw-pay-btn:hover { opacity: 1; background: #2968c8 !important; }
-    @media(max-width:420px){ #sc-checkout .kw-card-panel { padding: 22px 16px 18px; } #sc-checkout .card-panel-title { font-size: 22px; } #sc-checkout .card-row, #sc-checkout .card-address-grid { grid-template-columns: 1fr; } #sc-checkout .card-address-grid .card-field:first-child, #sc-checkout .card-address-grid .card-field:nth-child(4) { grid-column: auto; } }
+    #sc-checkout .kw-card-panel .kw-pay-btn { margin-top: 4px; border-radius: 12px; min-height: 56px; background: #635bff !important; box-shadow: 0 8px 18px rgba(99,91,255,.24); font-size: 18px; }
+    #sc-checkout .kw-card-panel .kw-pay-btn:hover { opacity: 1; background: #4f46e5 !important; }
+    #sc-checkout #stripeEmbeddedCheckout { margin-top:16px; overflow:hidden; border-radius:12px; }
+    @media(max-width:420px){ #sc-checkout .kw-card-panel { padding: 20px 14px 16px; } #sc-checkout .card-panel-head { flex-direction:column; } #sc-checkout .card-panel-title { font-size: 21px; } #sc-checkout .card-row, #sc-checkout .card-address-grid { grid-template-columns: 1fr; } #sc-checkout .card-address-grid .card-field:first-child, #sc-checkout .card-address-grid .card-field:nth-child(4) { grid-column: auto; } }
 
     /* Pix — CTA button dedicado */
     #sc-checkout .kw-pix-panel { padding-top: 8px; }
@@ -1382,8 +1388,23 @@
               </div>
 
               <div id="cardPanel" class="kw-card-panel" style="display:none">
-                <h3 class="card-panel-title">Tarjeta de crédito o débito</h3>
-                <p style="font-size:14px;line-height:1.5;margin:12px 0">Completa tu pago de forma segura sin salir de esta página.</p>
+                <div class="card-panel-head">
+                  <div>
+                    <h3 class="card-panel-title">Tarjeta de crédito</h3>
+                    <p class="card-panel-sub">Completa tu pago con la protección de Stripe sin salir de esta página.</p>
+                  </div>
+                  <div class="stripe-pill">Stripe</div>
+                </div>
+                <div class="card-brands" aria-label="Tarjetas aceptadas">
+                  <span class="card-brand">VISA</span>
+                  <span class="card-brand mastercard"><i></i><i></i></span>
+                  <span class="card-brand amex">AMEX</span>
+                </div>
+                <ul class="card-trust-list">
+                  <li>Pago cifrado y procesado por Stripe.</li>
+                  <li>No guardamos los datos de tu tarjeta.</li>
+                  <li>Confirmación inmediata después del pago.</li>
+                </ul>
                 <button class="kw-pay-btn" id="btnCard" type="button" onclick="pagarTarjeta()">Pagar con tarjeta</button>
                 <div id="stripeEmbeddedCheckout" style="margin-top:16px"></div>
                 <div class="kw-erro" id="erroCartaoBrick"></div>
