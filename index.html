@@ -534,6 +534,9 @@
       color: #374151; background: #fff; transition: border-color .15s, color .15s;
     }
     #sc-checkout .kw-method svg, #sc-checkout .kw-method img.kw-icon-img { width: 20px; height: 20px; flex-shrink: 0; }
+    #sc-checkout .kw-method .pay-logo { max-width: 68px; max-height: 28px; object-fit: contain; display:block; }
+    #sc-checkout .kw-method .pay-logo.spei { max-width: 72px; }
+    #sc-checkout .kw-method .pay-logo.oxxo { max-width: 62px; }
     #sc-checkout .kw-method-badge { position: absolute; width: 16px; height: 16px; top: -4px; right: -6px; display: none; }
     #sc-checkout .kw-badge-icon {
       display: block; width: 16px; height: 16px; background-color: #22c55e;
@@ -1366,8 +1369,7 @@
                   <div class="kw-method-badge">
                     <span class="kw-badge-icon"></span>
                   </div>
-                  <span aria-hidden="true">↔</span>
-                  SPEI
+                  <img class="pay-logo spei" src="images/spei-logo.png" alt="SPEI" width="145" height="50" loading="lazy">
                 </div>
                 <div class="kw-method" id="methCard" onclick="selMethod('card')">
                   <div class="kw-method-badge">
@@ -1376,7 +1378,7 @@
                   <svg viewBox="0 0 576 512" xmlns="http://www.w3.org/2000/svg"><path fill="currentColor" d="M527.9 32H48.1C21.5 32 0 53.5 0 80v352c0 26.5 21.5 48 48.1 48h479.8c26.6 0 48.1-21.5 48.1-48V80c0-26.5-21.5-48-48.1-48zM54.1 80h467.8c3.3 0 6 2.7 6 6v42H48.1V86c0-3.3 2.7-6 6-6zm467.8 352H54.1c-3.3 0-6-2.7-6-6V256h479.8v170c0 3.3-2.7 6-6 6zM192 332v40c0 6.6-5.4 12-12 12h-72c-6.6 0-12-5.4-12-12v-40c0-6.6 5.4-12 12-12h72c6.6 0 12 5.4 12 12zm192 0v40c0 6.6-5.4 12-12 12H236c-6.6 0-12-5.4-12-12v-40c0-6.6 5.4-12 12-12h136c6.6 0 12 5.4 12 12z"></path></svg>
                   Tarjeta
                 </div>
-                <div class="kw-method" id="methOxxo" onclick="selMethod('oxxo')"><div class="kw-method-badge"><span class="kw-badge-icon"></span></div><strong>OXXO</strong></div>
+                <div class="kw-method" id="methOxxo" onclick="selMethod('oxxo')"><div class="kw-method-badge"><span class="kw-badge-icon"></span></div><img class="pay-logo oxxo" src="images/oxxo-logo.png" alt="OXXO" width="145" height="50" loading="lazy"></div>
               </div>
 
               <!-- Painel PIX -->
@@ -2346,9 +2348,11 @@ function selMethod(m){
   document.getElementById('methOxxo').classList.toggle('active',m==='oxxo');
   document.getElementById('pixPanel').style.display=m==='card'?'none':'block';
   document.getElementById('cardPanel').style.display=m==='card'?'block':'none';
+  if(m!=='card')document.getElementById('paymentCheck').style.display='none';
   document.getElementById('documentWrap').style.display=m==='spei'?'block':'none';
   document.getElementById('documentHint').style.display=m==='spei'?'block':'none';
   document.getElementById('btnPix').textContent=m==='oxxo'?'Generar referencia OXXO':'Generar datos SPEI';
+  if(m==='card')setTimeout(()=>pagarTarjeta(),40);
 }
 function refreshCardBrickIfNeeded(){}
 
@@ -2385,10 +2389,10 @@ function checkoutPayload(){
  if(!/^52\d{10}$/.test(phone))throw new Error('Ingresa un teléfono mexicano de 10 dígitos.');
  return {identifier:SESSION_EID,email,name,telefone:phone,document:getVal('fDocument'),total:calcTotalCheckout(),quizData:{...getQuizData(),mom_name:name,email},obExtras,addon_colorir:checkoutMode==='main'&&addons.colorir,addon_expressa:checkoutMode==='main'&&addons.expressa,upsellFamiliar:checkoutMode==='upsell',upsellData};
 }
-function keepPayment(data){
+function keepPayment(data,showCheck=true){
  pendingPayment={statusToken:data.statusToken,email:getCheckoutEmail()};pixId=data.id;
  try{sessionStorage.setItem('mxPayment',JSON.stringify({token:data.statusToken,checkoutMode,addons,obExtras,quiz:getQuizData(),upsellData}))}catch{}
- document.getElementById('paymentCheck').style.display='block';
+ document.getElementById('paymentCheck').style.display=showCheck?'block':'none';
 }
 function loadStripeJs(){
  if(window.Stripe)return Promise.resolve(window.Stripe);
@@ -2435,11 +2439,16 @@ async function pagarTransferencia(){
 }
 async function pagarTarjeta(){
  const btn=document.getElementById('btnCard'),error=document.getElementById('erroCartaoBrick');error.textContent='';let submitted=false;
+ if(btn.disabled)return;
+ if(document.getElementById('stripeEmbeddedCheckout')?.children.length&&btn.style.display==='none')return;
  try{
+  document.querySelectorAll('#cardPanel .card-panel-head,#cardPanel .card-brands,#cardPanel .card-trust-list').forEach(el=>{el.style.display='none'});
+  document.getElementById('stripeEmbeddedCheckout').innerHTML='<p style="margin:8px 0 0;color:#5b6475;font-size:14px;text-align:center">Cargando pago seguro...</p>';
   const body=checkoutPayload();btn.disabled=true;btn.textContent='Cargando pago seguro…';submitted=true;
+  btn.style.display='none';
   const data=await paymentResponse(await fetch('/api/criar-cartao',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}));
-  if(data.status==='approved'){keepPayment(data);await verificarPagamento();return}
-  keepPayment(data);
+  if(data.status==='approved'){keepPayment(data,false);await verificarPagamento();return}
+  keepPayment(data,false);
   if(data.clientSecret&&data.publishableKey){
    await loadStripeJs();
    if(stripeEmbeddedCheckout&&typeof stripeEmbeddedCheckout.destroy==='function')stripeEmbeddedCheckout.destroy();
@@ -2452,7 +2461,7 @@ async function pagarTarjeta(){
   }
   const u=new URL(data.url);if(u.protocol!=='https:'||u.hostname!=='checkout.stripe.com')throw new Error('Enlace de Stripe no válido.');
   location.assign(u.href);
- }catch(e){error.textContent=e.message;btn.disabled=submitted&&(e.uncertain===true||e instanceof TypeError);btn.textContent='Pagar con tarjeta';}
+ }catch(e){error.textContent=e.message;btn.style.display='block';btn.disabled=submitted&&(e.uncertain===true||e instanceof TypeError);btn.textContent='Pagar con tarjeta';}
 }
 async function copiarTransferencia(){try{await navigator.clipboard.writeText(document.getElementById('pixCode').textContent);document.getElementById('copyBtn').textContent='¡Copiado!'}catch{showErroCheckout('Selecciona y copia el número que aparece arriba.')}}
 function handleApprovedPayment(data){
